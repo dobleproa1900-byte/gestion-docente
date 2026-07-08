@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import requests
 import datetime
 import uuid
+import gspread
+from google.oauth2.service_account import Credentials
 from groq import Groq
 
 st.set_page_config(
@@ -108,23 +109,113 @@ hr { border-color: var(--border) !important; }
 # ==========================================
 # SECRETS Y CONFIGURACIÓN
 # ==========================================
-GAS_URL = st.secrets.get("GAS_URL", "https://script.google.com/macros/s/AKfycbym09bSVt2PsqXTspq3Q-2vC9SjYd3PKlOMQVZn98sIUNasL2Bjkr9gmx1i3dP_wRvV/exec")
-# NOTA: las URLs publicadas estaban rotadas una posición (cada constante apuntaba a la hoja
-# siguiente): URL_ALUMNOS servía la hoja Cualitativo, URL_ASISTENCIA servía Alumnos, URL_NOTAS
-# servía Asistencia y URL_CUALITATIVO servía Notas. Esto hacía que los datos recién guardados
-# nunca aparecieran (se guardaban bien, pero se leían de la hoja equivocada). Corregido.
-URL_ALUMNOS = st.secrets.get("URL_ALUMNOS", "https://docs.google.com/spreadsheets/d/e/2PACX-1vSFbojcRukwXL1qE-n6WYxR1sOoYcXtVkteUTc_oqs7pFeoO0N31ffGIiGQeKP0GP7VgFwVPtl0uMaO/pub?output=csv")
-URL_ASISTENCIA = st.secrets.get("URL_ASISTENCIA", "https://docs.google.com/spreadsheets/d/e/2PACX-1vS9MHCz6vQtCDUvxBnG21dJ26BW5JtdidUY3I8kRtb_veqMXWb_v8h-XjcdNOsHSr_FWsbW7XKLpd1z/pub?output=csv")
-URL_NOTAS = st.secrets.get("URL_NOTAS", "https://docs.google.com/spreadsheets/d/e/2PACX-1vRmv2UX24YXYHhMuj6R0YXUlsmv1Tk25jS6ZdPGFoXqM2S5J7EqBX4y90jH9GpnY1pIkJUqt-9JzMRd/pub?output=csv")
-URL_CUALITATIVO = st.secrets.get("URL_CUALITATIVO", "https://docs.google.com/spreadsheets/d/e/2PACX-1vSzRRBBX9BKgCdTuFI-tiITl5jXfQQSolJe36S1xaJaA4GYTJ0lIU9LBQcJwXpxQ7XrhcUZdzS0BrNd/pub?output=csv")
 DEMO_USER = st.secrets.get("DEMO_USER", "docente")
 DEMO_PASS = st.secrets.get("DEMO_PASS", "gestion2026")
 GROQ_KEY = st.secrets.get("GROQ_API_KEY", "")
+
+# Nombres de las planillas de Google Sheets
+PLANILLA_ALUMNOS = "GestionDocente_Alumnos"
+PLANILLA_ASISTENCIA = "GestionDocente_Asistencia"
+PLANILLA_NOTAS = "GestionDocente_Notas"
+PLANILLA_CUALITATIVO = "GestionDocente_Cualitativo"
+
+# Encabezados (orden de columnas) de cada planilla
+COLUMNAS_ALUMNOS = ["ID", "Nombre", "Apellido", "Grado", "Seccion", "DNI", "Fecha_Nacimiento", "Contacto"]
+COLUMNAS_ASISTENCIA = ["ID_Alumno", "Nombre", "Fecha", "Estado", "Observacion"]
+COLUMNAS_NOTAS = ["ID_Alumno", "Nombre", "Materia", "Periodo", "Nota", "Observacion"]
+COLUMNAS_CUALITATIVO = ["ID_Alumno", "Nombre", "Fecha", "Conducta", "Compañerismo", "Destaca_En", "Observacion", "Tipo"]
 
 try:
     client = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
 except Exception:
     client = None
+
+# ==========================================
+# CONEXIÓN CON GOOGLE SHEETS (gspread)
+# ==========================================
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
+
+@st.cache_resource
+def get_gspread_client():
+    """Autentica contra Google usando las credenciales del service account
+    almacenadas en los secrets de Streamlit Cloud (GOOGLE_CREDENTIALS)."""
+    if "GOOGLE_CREDENTIALS" not in st.secrets:
+        raise RuntimeError(
+            "Falta el secret **GOOGLE_CREDENTIALS** en la configuración de "
+            "Streamlit Cloud. Pegá ahí el JSON del service account."
+        )
+    info = dict(st.secrets["GOOGLE_CREDENTIALS"])
+    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    return gspread.authorize(creds)
+
+
+def traducir_error(e, nombre_planilla=None):
+    """Convierte una excepción de gspread/google-auth en un mensaje claro."""
+    if isinstance(e, gspread.exceptions.SpreadsheetNotFound):
+        return (
+            f"No se encontró la planilla **{nombre_planilla}**. Verificá que el "
+            "nombre sea exacto y que esté compartida (como Editor) con el "
+            "email del service account."
+        )
+    if isinstance(e, gspread.exceptions.APIError):
+        detalle = str(e)
+        if "PERMISSION_DENIED" in detalle or "403" in detalle:
+            return (
+                f"Sin permisos sobre la planilla **{nombre_planilla}**. "
+                "Compartila con el email del service account como Editor."
+            )
+        return f"Error de la API de Google Sheets: {detalle}"
+    return str(e)
+
+
+def verificar_conexion():
+    """Devuelve (ok, mensaje_error) según se pueda autenticar o no."""
+    try:
+        get_gspread_client()
+        return True, None
+    except Exception as e:
+        return False, traducir_error(e)
+
+
+def get_worksheet(nombre_planilla, columnas):
+    """Abre la primera hoja de la planilla indicada. Si la planilla está vacía
+    (sin encabezados), los crea a partir de la lista de columnas."""
+    gc = get_gspread_client()
+    ws = gc.open(nombre_planilla).sheet1
+    if not ws.row_values(1):
+        ws.append_row(columnas)
+    return ws
+
+
+def cargar_planilla(nombre_planilla, columnas):
+    """Lee una planilla completa y la devuelve como DataFrame."""
+    try:
+        ws = get_worksheet(nombre_planilla, columnas)
+        registros = ws.get_all_records()
+        df = pd.DataFrame(registros)
+        if df.empty:
+            return pd.DataFrame(columns=columnas)
+        return df.dropna(how="all")
+    except Exception:
+        # Ante un fallo de lectura devolvemos vacío; el banner de conexión del
+        # encabezado ya informa el problema al usuario.
+        return pd.DataFrame(columns=columnas)
+
+
+def agregar_fila(nombre_planilla, columnas, datos):
+    """Agrega una fila respetando el orden de columnas.
+    Devuelve (ok, mensaje_error)."""
+    try:
+        ws = get_worksheet(nombre_planilla, columnas)
+        fila = [datos.get(col, "") for col in columnas]
+        ws.append_row(fila, value_input_option="USER_ENTERED")
+        return True, None
+    except Exception as e:
+        return False, traducir_error(e, nombre_planilla)
 
 # ==========================================
 # LOGIN
@@ -163,42 +254,19 @@ if not st.session_state.autenticado:
 # ==========================================
 @st.cache_data(ttl=30)
 def cargar_alumnos():
-    try:
-        df = pd.read_csv(URL_ALUMNOS)
-        return df.dropna(how='all')
-    except:
-        return pd.DataFrame(columns=["ID","Nombre","Apellido","Grado","Seccion","DNI","Fecha_Nacimiento","Contacto"])
+    return cargar_planilla(PLANILLA_ALUMNOS, COLUMNAS_ALUMNOS)
 
 @st.cache_data(ttl=30)
 def cargar_asistencia():
-    try:
-        df = pd.read_csv(URL_ASISTENCIA)
-        return df.dropna(how='all')
-    except:
-        return pd.DataFrame(columns=["ID_Alumno","Nombre","Fecha","Estado","Observacion"])
+    return cargar_planilla(PLANILLA_ASISTENCIA, COLUMNAS_ASISTENCIA)
 
 @st.cache_data(ttl=30)
 def cargar_notas():
-    try:
-        df = pd.read_csv(URL_NOTAS)
-        return df.dropna(how='all')
-    except:
-        return pd.DataFrame(columns=["ID_Alumno","Nombre","Materia","Periodo","Nota","Observacion"])
+    return cargar_planilla(PLANILLA_NOTAS, COLUMNAS_NOTAS)
 
 @st.cache_data(ttl=30)
 def cargar_cualitativo():
-    try:
-        df = pd.read_csv(URL_CUALITATIVO)
-        return df.dropna(how='all')
-    except:
-        return pd.DataFrame(columns=["ID_Alumno","Nombre","Fecha","Conducta","Compañerismo","Destaca_En","Observacion","Tipo"])
-
-def enviar_gas(datos):
-    try:
-        res = requests.post(GAS_URL, json=datos, timeout=10)
-        return res.json().get("success", False)
-    except Exception:
-        return False
+    return cargar_planilla(PLANILLA_CUALITATIVO, COLUMNAS_CUALITATIVO)
 
 # ==========================================
 # HEADER
@@ -219,6 +287,14 @@ with col_logout:
     if st.button("🚪 Cerrar sesión", use_container_width=True):
         st.session_state.autenticado = False
         st.rerun()
+
+# Banner de estado de conexión con Google Sheets
+conexion_ok, conexion_error = verificar_conexion()
+if not conexion_ok:
+    st.error(
+        f"🔌 **No se pudo conectar con Google Sheets.** {conexion_error}\n\n"
+        "Mientras tanto, las planillas se verán vacías y no se podrán guardar datos."
+    )
 
 # ==========================================
 # PESTAÑAS
@@ -316,22 +392,22 @@ with tab2:
             if st.form_submit_button("✅ Guardar Alumno", type="primary"):
                 if nombre and apellido:
                     datos = {
-                        "action": "agregar_alumno",
-                        "id": str(uuid.uuid4())[:8].upper(),
-                        "nombre": nombre,
-                        "apellido": apellido,
-                        "grado": grado,
-                        "seccion": seccion,
-                        "dni": dni,
-                        "fecha_nacimiento": str(fecha_nac),
-                        "contacto": contacto
+                        "ID": str(uuid.uuid4())[:8].upper(),
+                        "Nombre": nombre,
+                        "Apellido": apellido,
+                        "Grado": grado,
+                        "Seccion": seccion,
+                        "DNI": dni,
+                        "Fecha_Nacimiento": str(fecha_nac),
+                        "Contacto": contacto
                     }
-                    if enviar_gas(datos):
+                    ok, msg = agregar_fila(PLANILLA_ALUMNOS, COLUMNAS_ALUMNOS, datos)
+                    if ok:
                         st.success("✅ Alumno guardado.")
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error("Error al guardar.")
+                        st.error(f"❌ No se pudo guardar: {msg}")
                 else:
                     st.warning("Nombre y apellido son obligatorios.")
 
@@ -367,19 +443,19 @@ with tab3:
             if st.form_submit_button("✅ Registrar Asistencia", type="primary"):
                 idx = opciones.index(alumno_sel)
                 datos = {
-                    "action": "registrar_asistencia",
-                    "id_alumno": ids[idx],
-                    "nombre": alumno_sel,
-                    "fecha": str(fecha),
-                    "estado": estado,
-                    "observacion": observacion
+                    "ID_Alumno": ids[idx],
+                    "Nombre": alumno_sel,
+                    "Fecha": str(fecha),
+                    "Estado": estado,
+                    "Observacion": observacion
                 }
-                if enviar_gas(datos):
+                ok, msg = agregar_fila(PLANILLA_ASISTENCIA, COLUMNAS_ASISTENCIA, datos)
+                if ok:
                     st.success("✅ Asistencia registrada.")
                     st.cache_data.clear()
                     st.rerun()
                 else:
-                    st.error("Error al guardar.")
+                    st.error(f"❌ No se pudo guardar: {msg}")
 
         st.markdown("---")
         df_asistencia = cargar_asistencia()
@@ -417,20 +493,20 @@ with tab4:
             if st.form_submit_button("✅ Guardar Nota", type="primary"):
                 idx = opciones.index(alumno_sel)
                 datos = {
-                    "action": "cargar_nota",
-                    "id_alumno": ids[idx],
-                    "nombre": alumno_sel,
-                    "materia": materia,
-                    "periodo": periodo,
-                    "nota": nota,
-                    "observacion": observacion
+                    "ID_Alumno": ids[idx],
+                    "Nombre": alumno_sel,
+                    "Materia": materia,
+                    "Periodo": periodo,
+                    "Nota": nota,
+                    "Observacion": observacion
                 }
-                if enviar_gas(datos):
+                ok, msg = agregar_fila(PLANILLA_NOTAS, COLUMNAS_NOTAS, datos)
+                if ok:
                     st.success("✅ Nota guardada.")
                     st.cache_data.clear()
                     st.rerun()
                 else:
-                    st.error("Error al guardar.")
+                    st.error(f"❌ No se pudo guardar: {msg}")
 
         st.markdown("---")
         df_notas = cargar_notas()
@@ -467,22 +543,22 @@ with tab5:
             if st.form_submit_button("✅ Guardar Registro", type="primary"):
                 idx = opciones.index(alumno_sel)
                 datos = {
-                    "action": "registro_cualitativo",
-                    "id_alumno": ids[idx],
-                    "nombre": alumno_sel,
-                    "fecha": str(fecha),
-                    "conducta": conducta,
-                    "compañerismo": compañerismo,
-                    "destaca_en": destaca_en,
-                    "observacion": observacion,
-                    "tipo": tipo
+                    "ID_Alumno": ids[idx],
+                    "Nombre": alumno_sel,
+                    "Fecha": str(fecha),
+                    "Conducta": conducta,
+                    "Compañerismo": compañerismo,
+                    "Destaca_En": destaca_en,
+                    "Observacion": observacion,
+                    "Tipo": tipo
                 }
-                if enviar_gas(datos):
+                ok, msg = agregar_fila(PLANILLA_CUALITATIVO, COLUMNAS_CUALITATIVO, datos)
+                if ok:
                     st.success("✅ Registro guardado.")
                     st.cache_data.clear()
                     st.rerun()
                 else:
-                    st.error("Error al guardar.")
+                    st.error(f"❌ No se pudo guardar: {msg}")
 
         st.markdown("---")
         df_cual = cargar_cualitativo()
