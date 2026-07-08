@@ -108,7 +108,7 @@ hr { border-color: var(--border) !important; }
 # ==========================================
 # SECRETS Y CONFIGURACIÓN
 # ==========================================
-GAS_URL = st.secrets.get("GAS_URL", "https://script.google.com/macros/s/AKfycbwYHuOc0WBnSV1luPpMlF2tGackRWBu9FT_5SjIigI_EAcCh0KB_mxwlIfy8YQVwD0H/exec")
+GAS_URL = st.secrets.get("GAS_URL", "https://script.google.com/macros/s/AKfycbym09bSVt2PsqXTspq3Q-2vC9SjYd3PKlOMQVZn98sIUNasL2Bjkr9gmx1i3dP_wRvV/exec")
 # NOTA: las URLs publicadas estaban rotadas una posición (cada constante apuntaba a la hoja
 # siguiente): URL_ALUMNOS servía la hoja Cualitativo, URL_ASISTENCIA servía Alumnos, URL_NOTAS
 # servía Asistencia y URL_CUALITATIVO servía Notas. Esto hacía que los datos recién guardados
