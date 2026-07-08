@@ -13,13 +13,110 @@ st.set_page_config(
 )
 
 # ==========================================
+# ESTILOS PERSONALIZADOS
+# ==========================================
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --primary: #1e293b;
+    --primary-dark: #0f172a;
+    --accent: #ca8a04;
+    --info: #2563eb;
+    --success: #16a34a;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --card-bg: #ffffff;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+}
+
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+
+.stApp { background: linear-gradient(180deg, #f8fafc 0%, #fefce8 100%); }
+
+.app-header {
+    background: linear-gradient(120deg, var(--primary) 0%, var(--primary-dark) 100%);
+    padding: 1.75rem 2rem;
+    border-radius: 16px;
+    margin-bottom: 1rem;
+    box-shadow: 0 10px 30px -12px rgba(15, 23, 42, 0.45);
+    border-bottom: 3px solid var(--accent);
+}
+.app-header h1 { color: #ffffff !important; font-weight: 800; font-size: 1.9rem; margin: 0; }
+.app-header p { color: rgba(255,255,255,0.88) !important; font-size: 1rem; margin: 0.25rem 0 0 0; }
+
+[data-testid="stForm"] {
+    background: var(--card-bg);
+    padding: 1.5rem 1.75rem;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    box-shadow: 0 15px 35px -20px rgba(15, 23, 42, 0.25);
+}
+
+.kpi-card {
+    background: var(--card-bg);
+    border-radius: 14px;
+    padding: 1.1rem 1.3rem;
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--kpi-color, var(--primary));
+    box-shadow: 0 4px 14px -8px rgba(30,41,59,0.15);
+}
+.kpi-card .kpi-label { color: var(--text-muted); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.kpi-card .kpi-value { color: var(--text-main); font-size: 2rem; font-weight: 800; line-height: 1.2; }
+
+[data-testid="stMetric"] {
+    background: var(--card-bg);
+    border-radius: 14px;
+    padding: 1rem 1.2rem;
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--accent);
+    box-shadow: 0 4px 14px -8px rgba(30,41,59,0.15);
+}
+
+.stTabs [data-baseweb="tab-list"] { gap: 4px; background: #ffffff; padding: 6px; border-radius: 12px; border: 1px solid var(--border); }
+.stTabs [data-baseweb="tab"] { border-radius: 8px; padding: 10px 18px; font-weight: 600; color: var(--text-muted); }
+.stTabs [aria-selected="true"] { background: var(--primary) !important; color: #ffffff !important; }
+
+.stButton > button, .stDownloadButton > button {
+    border-radius: 10px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    transition: all 0.15s ease;
+}
+.stButton > button[kind^="primary"], .stFormSubmitButton > button[kind^="primary"] {
+    background: linear-gradient(120deg, var(--primary), var(--primary-dark)) !important;
+    border: none !important;
+    color: #ffffff !important;
+}
+.stButton > button:hover, .stDownloadButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px -8px rgba(15,23,42,0.5);
+}
+
+[data-testid="stAlert"] { border-radius: 12px; }
+[data-testid="stExpander"] { border-radius: 10px; border: 1px solid var(--border); }
+[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+
+h2, h3 { color: var(--text-main); font-weight: 700; }
+hr { border-color: var(--border) !important; }
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================
 # SECRETS Y CONFIGURACIÓN
 # ==========================================
 GAS_URL = st.secrets.get("GAS_URL", "https://script.google.com/macros/s/AKfycbwYHuOc0WBnSV1luPpMlF2tGackRWBu9FT_5SjIigI_EAcCh0KB_mxwlIfy8YQVwD0H/exec")
-URL_ALUMNOS = st.secrets.get("URL_ALUMNOS", "https://docs.google.com/spreadsheets/d/e/2PACX-1vSzRRBBX9BKgCdTuFI-tiITl5jXfQQSolJe36S1xaJaA4GYTJ0lIU9LBQcJwXpxQ7XrhcUZdzS0BrNd/pub?output=csv")
-URL_ASISTENCIA = st.secrets.get("URL_ASISTENCIA", "https://docs.google.com/spreadsheets/d/e/2PACX-1vSFbojcRukwXL1qE-n6WYxR1sOoYcXtVkteUTc_oqs7pFeoO0N31ffGIiGQeKP0GP7VgFwVPtl0uMaO/pub?output=csv")
-URL_NOTAS = st.secrets.get("URL_NOTAS", "https://docs.google.com/spreadsheets/d/e/2PACX-1vS9MHCz6vQtCDUvxBnG21dJ26BW5JtdidUY3I8kRtb_veqMXWb_v8h-XjcdNOsHSr_FWsbW7XKLpd1z/pub?output=csv")
-URL_CUALITATIVO = st.secrets.get("URL_CUALITATIVO", "https://docs.google.com/spreadsheets/d/e/2PACX-1vRmv2UX24YXYHhMuj6R0YXUlsmv1Tk25jS6ZdPGFoXqM2S5J7EqBX4y90jH9GpnY1pIkJUqt-9JzMRd/pub?output=csv")
+# NOTA: las URLs publicadas estaban rotadas una posición (cada constante apuntaba a la hoja
+# siguiente): URL_ALUMNOS servía la hoja Cualitativo, URL_ASISTENCIA servía Alumnos, URL_NOTAS
+# servía Asistencia y URL_CUALITATIVO servía Notas. Esto hacía que los datos recién guardados
+# nunca aparecieran (se guardaban bien, pero se leían de la hoja equivocada). Corregido.
+URL_ALUMNOS = st.secrets.get("URL_ALUMNOS", "https://docs.google.com/spreadsheets/d/e/2PACX-1vSFbojcRukwXL1qE-n6WYxR1sOoYcXtVkteUTc_oqs7pFeoO0N31ffGIiGQeKP0GP7VgFwVPtl0uMaO/pub?output=csv")
+URL_ASISTENCIA = st.secrets.get("URL_ASISTENCIA", "https://docs.google.com/spreadsheets/d/e/2PACX-1vS9MHCz6vQtCDUvxBnG21dJ26BW5JtdidUY3I8kRtb_veqMXWb_v8h-XjcdNOsHSr_FWsbW7XKLpd1z/pub?output=csv")
+URL_NOTAS = st.secrets.get("URL_NOTAS", "https://docs.google.com/spreadsheets/d/e/2PACX-1vRmv2UX24YXYHhMuj6R0YXUlsmv1Tk25jS6ZdPGFoXqM2S5J7EqBX4y90jH9GpnY1pIkJUqt-9JzMRd/pub?output=csv")
+URL_CUALITATIVO = st.secrets.get("URL_CUALITATIVO", "https://docs.google.com/spreadsheets/d/e/2PACX-1vSzRRBBX9BKgCdTuFI-tiITl5jXfQQSolJe36S1xaJaA4GYTJ0lIU9LBQcJwXpxQ7XrhcUZdzS0BrNd/pub?output=csv")
 DEMO_USER = st.secrets.get("DEMO_USER", "docente")
 DEMO_PASS = st.secrets.get("DEMO_PASS", "gestion2026")
 GROQ_KEY = st.secrets.get("GROQ_API_KEY", "")
@@ -38,15 +135,22 @@ if "autenticado" not in st.session_state:
 if not st.session_state.autenticado:
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("<h1 style='text-align:center'>🎓 GestiónDocente</h1>", unsafe_allow_html=True)
-        st.markdown("<h4 style='text-align:center;color:gray'>Sistema Premium de Gestión Educativa</h4>", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div style='text-align:center; margin-bottom: 1.5rem;'>
+                <div style='font-size:3rem; line-height:1;'>🎓</div>
+                <h1 style='color:#0f172a; font-weight:800; margin:0.3rem 0 0 0;'>GestiónDocente</h1>
+                <p style='color:#64748b; font-size:1rem; margin-top:0.3rem;'>Sistema Premium de Gestión Educativa</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
         with st.form("login_form"):
             usuario = st.text_input("Usuario:", placeholder="docente")
             clave = st.text_input("Contraseña:", type="password", placeholder="••••••••")
             st.caption("ℹ️ Demo: usuario `docente` / contraseña `gestion2026`")
-            if st.form_submit_button("Ingresar", type="primary"):
+            if st.form_submit_button("Ingresar", type="primary", use_container_width=True):
                 if usuario == DEMO_USER and clave == DEMO_PASS:
                     st.session_state.autenticado = True
                     st.rerun()
@@ -93,7 +197,7 @@ def enviar_gas(datos):
     try:
         res = requests.post(GAS_URL, json=datos, timeout=10)
         return res.json().get("success", False)
-    except:
+    except Exception:
         return False
 
 # ==========================================
@@ -101,15 +205,20 @@ def enviar_gas(datos):
 # ==========================================
 col_titulo, col_logout = st.columns([5, 1])
 with col_titulo:
-    st.title("🎓 GestiónDocente Premium")
-    st.markdown("*Sistema Integral de Gestión Educativa con IA*")
+    st.markdown(
+        """
+        <div class="app-header">
+            <h1>🎓 GestiónDocente Premium</h1>
+            <p>Sistema Integral de Gestión Educativa con IA</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 with col_logout:
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🚪 Cerrar sesión"):
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    if st.button("🚪 Cerrar sesión", use_container_width=True):
         st.session_state.autenticado = False
         st.rerun()
-
-st.markdown("---")
 
 # ==========================================
 # PESTAÑAS
@@ -134,11 +243,22 @@ with tab1:
     df_notas = cargar_notas()
     df_cualitativo = cargar_cualitativo()
 
+    def kpi_card(col, label, value, color):
+        col.markdown(
+            f"""
+            <div class="kpi-card" style="--kpi-color:{color};">
+                <div class="kpi-label">{label}</div>
+                <div class="kpi-value">{value}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("👥 Total Alumnos", len(df_alumnos))
-    k2.metric("📅 Registros Asistencia", len(df_asistencia))
-    k3.metric("📝 Calificaciones", len(df_notas))
-    k4.metric("🧠 Registros Cualitativos", len(df_cualitativo))
+    kpi_card(k1, "👥 Total Alumnos", len(df_alumnos), "#1e293b")
+    kpi_card(k2, "📅 Registros Asistencia", len(df_asistencia), "#2563eb")
+    kpi_card(k3, "📝 Calificaciones", len(df_notas), "#ca8a04")
+    kpi_card(k4, "🧠 Registros Cualitativos", len(df_cualitativo), "#16a34a")
 
     st.markdown("---")
 
@@ -164,7 +284,14 @@ with tab1:
         st.subheader("📊 Distribución de Asistencia")
         estado_counts = df_asistencia["Estado"].value_counts().reset_index()
         estado_counts.columns = ["Estado", "Cantidad"]
-        fig = px.pie(estado_counts, names="Estado", values="Cantidad", hole=0.4)
+        fig = px.pie(estado_counts, names="Estado", values="Cantidad", hole=0.4,
+                     color_discrete_sequence=["#1e293b", "#2563eb", "#ca8a04", "#16a34a", "#dc2626"])
+        fig.update_layout(
+            margin=dict(l=0, r=0, t=30, b=0),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="Inter, sans-serif", color="#1e293b")
+        )
         st.plotly_chart(fig, use_container_width=True)
 
 # ==========================================
