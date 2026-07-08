@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import datetime
+import json
 import uuid
 import gspread
 from google.oauth2.service_account import Credentials
@@ -148,7 +149,29 @@ def get_gspread_client():
             "Falta el secret **GOOGLE_CREDENTIALS** en la configuración de "
             "Streamlit Cloud. Pegá ahí el JSON del service account."
         )
-    info = dict(st.secrets["GOOGLE_CREDENTIALS"])
+
+    raw = st.secrets["GOOGLE_CREDENTIALS"]
+
+    # Streamlit acepta el secret de dos formas:
+    #  1) como bloque JSON pegado tal cual  -> llega como str
+    #  2) como tabla TOML ([GOOGLE_CREDENTIALS]) -> llega como dict/AttrDict
+    if isinstance(raw, str):
+        try:
+            info = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(
+                "El secret **GOOGLE_CREDENTIALS** no es un JSON válido. "
+                "Pegá el contenido completo del archivo del service account. "
+                f"(Detalle: {e})"
+            )
+    else:
+        info = dict(raw)
+
+    # La clave privada suele quedar con los saltos de línea escapados (\\n)
+    # al copiarla; hay que restaurarlos para que la firma sea válida.
+    if "private_key" in info:
+        info["private_key"] = info["private_key"].replace("\\n", "\n")
+
     creds = Credentials.from_service_account_info(info, scopes=SCOPES)
     return gspread.authorize(creds)
 
