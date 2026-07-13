@@ -2,5 +2,7 @@ streamlit
 pandas
 plotly
 groq
-gspread
-google-auth
+# El stack de autenticación se fija para evitar que un redeploy instale una
+# versión incompatible y rompa la conexión con Google Sheets.
+gspread==6.2.1
+google-auth==2.50.0

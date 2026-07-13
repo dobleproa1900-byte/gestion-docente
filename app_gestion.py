@@ -140,18 +140,9 @@ SCOPES = [
 ]
 
 
-@st.cache_resource
-def get_gspread_client():
-    """Autentica contra Google usando las credenciales del service account
-    almacenadas en los secrets de Streamlit Cloud (GOOGLE_CREDENTIALS)."""
-    if "GOOGLE_CREDENTIALS" not in st.secrets:
-        raise RuntimeError(
-            "Falta el secret **GOOGLE_CREDENTIALS** en la configuración de "
-            "Streamlit Cloud. Pegá ahí el JSON del service account."
-        )
-
-    raw = st.secrets["GOOGLE_CREDENTIALS"]
-
+def _normalizar_credenciales(raw):
+    """Devuelve un dict limpio con las credenciales del service account,
+    sin importar en qué formato haya quedado el secret."""
     # Streamlit acepta el secret de dos formas:
     #  1) como bloque JSON pegado tal cual  -> llega como str
     #  2) como tabla TOML ([GOOGLE_CREDENTIALS]) -> llega como dict/AttrDict
@@ -165,19 +156,51 @@ def get_gspread_client():
                 f"(Detalle: {e})"
             )
     else:
-        info = dict(raw)
+        # AttrDict / Secrets de Streamlit -> dict plano de strings.
+        info = {k: v for k, v in dict(raw).items()}
 
-    # La clave privada suele quedar con los saltos de línea escapados (\\n)
-    # al copiarla; hay que restaurarlos para que la firma sea válida.
-    if "private_key" in info:
-        info["private_key"] = info["private_key"].replace("\\n", "\n")
+    # La clave privada es la causa #1 de errores "Invalid JWT Signature":
+    # al copiarla suele quedar con los saltos de línea escapados (\\n) en vez
+    # de reales. Restauramos los saltos y garantizamos el formato PEM correcto.
+    pk = info.get("private_key")
+    if isinstance(pk, str):
+        pk = pk.replace("\\n", "\n").replace("\r\n", "\n").strip()
+        if not pk.endswith("\n"):
+            pk += "\n"
+        info["private_key"] = pk
 
+    return info
+
+
+@st.cache_resource
+def get_gspread_client():
+    """Autentica contra Google usando las credenciales del service account
+    almacenadas en los secrets de Streamlit Cloud (GOOGLE_CREDENTIALS).
+
+    Además de construir el cliente hace una llamada real a la API para
+    validar que las credenciales funcionan: gspread.authorize() por sí solo
+    NO contacta a Google, así que sin esta verificación una clave mal
+    formateada pasaría desapercibida hasta el momento de guardar."""
+    if "GOOGLE_CREDENTIALS" not in st.secrets:
+        raise RuntimeError(
+            "Falta el secret **GOOGLE_CREDENTIALS** en la configuración de "
+            "Streamlit Cloud. Pegá ahí el JSON del service account."
+        )
+
+    info = _normalizar_credenciales(st.secrets["GOOGLE_CREDENTIALS"])
     creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-    return gspread.authorize(creds)
+    gc = gspread.authorize(creds)
+
+    # Llamada liviana que fuerza a Google a validar la firma del JWT.
+    # Si la clave está mal, acá se lanza la excepción real (no al guardar).
+    gc.list_spreadsheet_files()
+    return gc
 
 
 def traducir_error(e, nombre_planilla=None):
     """Convierte una excepción de gspread/google-auth en un mensaje claro."""
+    detalle = str(e)
+
     if isinstance(e, gspread.exceptions.SpreadsheetNotFound):
         return (
             f"No se encontró la planilla **{nombre_planilla}**. Verificá que el "
@@ -185,14 +208,30 @@ def traducir_error(e, nombre_planilla=None):
             "email del service account."
         )
     if isinstance(e, gspread.exceptions.APIError):
-        detalle = str(e)
         if "PERMISSION_DENIED" in detalle or "403" in detalle:
             return (
                 f"Sin permisos sobre la planilla **{nombre_planilla}**. "
                 "Compartila con el email del service account como Editor."
             )
+        if "accessNotConfigured" in detalle or "has not been used" in detalle:
+            return (
+                "La API de Google Sheets o Drive no está habilitada en el "
+                "proyecto del service account. Activá **Google Sheets API** y "
+                "**Google Drive API** en Google Cloud Console."
+            )
         return f"Error de la API de Google Sheets: {detalle}"
-    return str(e)
+
+    # Errores de autenticación de google-auth: la causa casi siempre es una
+    # private_key mal pegada en el secret (firma inválida) o el reloj desfasado.
+    if "invalid_grant" in detalle or "Invalid JWT Signature" in detalle or "RefreshError" in type(e).__name__:
+        return (
+            "Las credenciales no son válidas (**Invalid JWT Signature / "
+            "invalid_grant**). Revisá que el secret **GOOGLE_CREDENTIALS** "
+            "tenga la `private_key` completa y sin cortar. Lo más seguro es "
+            "pegar el JSON como tabla TOML `[GOOGLE_CREDENTIALS]` con la clave "
+            "entre triple comillas."
+        )
+    return detalle
 
 
 def verificar_conexion():
