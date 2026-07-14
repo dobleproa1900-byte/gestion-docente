@@ -6,7 +6,7 @@ import json
 import uuid
 import gspread
 from google.oauth2.service_account import Credentials
-from groq import Groq
+import anthropic
 
 st.set_page_config(
     page_title="GestiónDocente Premium",
@@ -112,7 +112,7 @@ hr { border-color: var(--border) !important; }
 # ==========================================
 DEMO_USER = st.secrets.get("DEMO_USER", "docente")
 DEMO_PASS = st.secrets.get("DEMO_PASS", "gestion2026")
-GROQ_KEY = st.secrets.get("GROQ_API_KEY", "")
+ANTHROPIC_KEY = st.secrets.get("ANTHROPIC_API_KEY", "")
 
 # IDs de las planillas de Google Sheets (evita ambigüedades o fallos de
 # búsqueda por nombre; el ID es la parte de la URL entre /d/ y /edit)
@@ -128,7 +128,7 @@ COLUMNAS_NOTAS = ["ID_Alumno", "Nombre", "Materia", "Periodo", "Nota", "Observac
 COLUMNAS_CUALITATIVO = ["ID_Alumno", "Nombre", "Fecha", "Conducta", "Compañerismo", "Destaca_En", "Observacion", "Tipo"]
 
 try:
-    client = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
+    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY) if ANTHROPIC_KEY else None
 except Exception:
     client = None
 
@@ -641,7 +641,7 @@ with tab6:
     if df_alumnos.empty:
         st.warning("Primero cargá alumnos para poder generar informes.")
     elif client is None:
-        st.error("❌ Clave de Groq no configurada en Secrets.")
+        st.error("❌ Clave de Anthropic no configurada en Secrets.")
     else:
         opciones = [f"{row['Nombre']} {row['Apellido']}" for _, row in df_alumnos.iterrows()]
         ids = [row['ID'] for _, row in df_alumnos.iterrows()]
@@ -712,12 +712,13 @@ El informe debe:
 Usá lenguaje pedagógico formal bonaerense. El informe debe poder ser impreso y presentado a la familia."""
 
                 try:
-                    completion = client.chat.completions.create(
-                        messages=[{"role": "user", "content": prompt}],
-                        model="llama-3.3-70b-versatile",
+                    respuesta = client.messages.create(
+                        model="claude-sonnet-4-6",
+                        max_tokens=8192,
                         temperature=0.3,
+                        messages=[{"role": "user", "content": prompt}],
                     )
-                    informe = completion.choices[0].message.content
+                    informe = next(b.text for b in respuesta.content if b.type == "text")
                     st.success("✅ Informe generado.")
                     st.markdown("---")
                     st.markdown(informe)
