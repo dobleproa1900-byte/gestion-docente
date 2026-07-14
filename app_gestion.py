@@ -114,11 +114,12 @@ DEMO_USER = st.secrets.get("DEMO_USER", "docente")
 DEMO_PASS = st.secrets.get("DEMO_PASS", "gestion2026")
 GROQ_KEY = st.secrets.get("GROQ_API_KEY", "")
 
-# Nombres de las planillas de Google Sheets
-PLANILLA_ALUMNOS = "GestionDocente_Alumnos"
-PLANILLA_ASISTENCIA = "GestionDocente_Asistencia"
-PLANILLA_NOTAS = "GestionDocente_Notas"
-PLANILLA_CUALITATIVO = "GestionDocente_Cualitativo"
+# IDs de las planillas de Google Sheets (evita ambigüedades o fallos de
+# búsqueda por nombre; el ID es la parte de la URL entre /d/ y /edit)
+PLANILLA_ALUMNOS = "1esTvzcCsiw5geuiDbutyS_sneDW1VdsPoWyiAjX--u0"
+PLANILLA_ASISTENCIA = "1Q2PObHikyTlaKjlPKnJ0PbfY6VUxVTIS7Z4YfGsiRoo"
+PLANILLA_NOTAS = "1DT3nuPTIvpYRVaekWHCULD9V3A_jC-hIqHVsoqeO7bk"
+PLANILLA_CUALITATIVO = "18DBCx9FwCcbhIx_YGsLadT2BVf1RztlLNs0QO1D8Uu8"
 
 # Encabezados (orden de columnas) de cada planilla
 COLUMNAS_ALUMNOS = ["ID", "Nombre", "Apellido", "Grado", "Seccion", "DNI", "Fecha_Nacimiento", "Contacto"]
@@ -203,8 +204,8 @@ def traducir_error(e, nombre_planilla=None):
 
     if isinstance(e, gspread.exceptions.SpreadsheetNotFound):
         return (
-            f"No se encontró la planilla **{nombre_planilla}**. Verificá que el "
-            "nombre sea exacto y que esté compartida (como Editor) con el "
+            f"No se encontró la planilla con ID **{nombre_planilla}**. Verificá "
+            "que el ID sea correcto y que esté compartida (como Editor) con el "
             "email del service account."
         )
     if isinstance(e, gspread.exceptions.APIError):
@@ -243,20 +244,20 @@ def verificar_conexion():
         return False, traducir_error(e)
 
 
-def get_worksheet(nombre_planilla, columnas):
-    """Abre la primera hoja de la planilla indicada. Si la planilla está vacía
-    (sin encabezados), los crea a partir de la lista de columnas."""
+def get_worksheet(id_planilla, columnas):
+    """Abre la primera hoja de la planilla indicada (por ID). Si la planilla
+    está vacía (sin encabezados), los crea a partir de la lista de columnas."""
     gc = get_gspread_client()
-    ws = gc.open(nombre_planilla).sheet1
+    ws = gc.open_by_key(id_planilla).sheet1
     if not ws.row_values(1):
         ws.append_row(columnas)
     return ws
 
 
-def cargar_planilla(nombre_planilla, columnas):
+def cargar_planilla(id_planilla, columnas):
     """Lee una planilla completa y la devuelve como DataFrame."""
     try:
-        ws = get_worksheet(nombre_planilla, columnas)
+        ws = get_worksheet(id_planilla, columnas)
         registros = ws.get_all_records()
         df = pd.DataFrame(registros)
         if df.empty:
@@ -268,16 +269,16 @@ def cargar_planilla(nombre_planilla, columnas):
         return pd.DataFrame(columns=columnas)
 
 
-def agregar_fila(nombre_planilla, columnas, datos):
+def agregar_fila(id_planilla, columnas, datos):
     """Agrega una fila respetando el orden de columnas.
     Devuelve (ok, mensaje_error)."""
     try:
-        ws = get_worksheet(nombre_planilla, columnas)
+        ws = get_worksheet(id_planilla, columnas)
         fila = [datos.get(col, "") for col in columnas]
         ws.append_row(fila, value_input_option="USER_ENTERED")
         return True, None
     except Exception as e:
-        return False, traducir_error(e, nombre_planilla)
+        return False, traducir_error(e, id_planilla)
 
 # ==========================================
 # LOGIN
